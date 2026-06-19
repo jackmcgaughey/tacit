@@ -15,7 +15,7 @@ Demand (logit choice probabilities, used as quantities with market size 1)::
 
 Profit: ``pi_i = (p_i - c_i) * s_i``.
 
-Two price benchmarks are solved as fixed points of their markup equations:
+Two price benchmarks are the interior roots of their markup equations:
 
 * **Bertrand-Nash** (one-shot, each firm maximises own profit)::
 
@@ -28,17 +28,23 @@ Two price benchmarks are solved as fixed points of their markup equations:
 For the canonical ``n = 2`` parameters ``a_i = 2, a0 = 0, c_i = 1, mu = 0.25`` the
 solvers reproduce the textbook values ``p^N ~= 1.4729`` and ``p^M ~= 1.9249``.
 
-Both markup equations are contractions for interior logit instances, so plain
-fixed-point iteration converges; this keeps the solvers dependency-light and fully
-deterministic (CLAUDE.md §3 lists fixed-point iteration as the first option). A
-``scipy.optimize.fsolve`` fallback can be added later if a generated instance ever
-fails to converge.
+**Solver method.** Each benchmark is the unique interior root of its markup system,
+found with ``scipy.optimize.fsolve`` (MINPACK ``hybrd``, a robust trust-region
+Newton). CLAUDE.md §3 lists fixed-point iteration *or* ``fsolve``; we use ``fsolve``
+because naive simultaneous (Jacobi) markup iteration limit-cycles on asymmetric
+instances with a dominant firm (e.g. high quality / low cost), which the procedural
+generator readily produces. ``fsolve`` is deterministic, so seeded reproducibility
+is preserved. Each solution is validated (small residual, interior shares) and a
+``ConvergenceError`` is raised otherwise.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import numpy as np
 import numpy.typing as npt
+from scipy.optimize import fsolve
 
 FloatArray = npt.NDArray[np.float64]
 
@@ -50,13 +56,20 @@ __all__ = [
     "profits",
 ]
 
+# Default acceptance gate on the max absolute markup-equation residual at the
+# returned solution. A converged fsolve leaves a residual of ~1e-9 or smaller for
+# these smooth systems, whereas a failed solve (e.g. a limit cycle) leaves a
+# residual of order 1; this loose bound cleanly separates success from failure
+# while still implying price accuracy far tighter than anything the benchmark needs.
+_RESIDUAL_TOL = 1e-6
+
 
 class ConvergenceError(RuntimeError):
-    """Raised when a fixed-point price solver fails to converge within ``max_iter``."""
+    """Raised when a price solver fails to find a valid interior root."""
 
 
 def _as_float_array(x: npt.ArrayLike) -> FloatArray:
-    """Return ``x`` as a 1-D float64 array (a defensive copy of array-like input)."""
+    """Return ``x`` as a float64 array (a defensive copy of array-like input)."""
     arr: FloatArray = np.asarray(x, dtype=np.float64)
     return arr
 
@@ -126,44 +139,56 @@ def profits(
     return result
 
 
+def _nash_residual(
+    prices: FloatArray, a: FloatArray, a0: float, c: FloatArray, mu: float
+) -> FloatArray:
+    """Residual of the Bertrand-Nash markup equation ``p_i - c_i - mu/(1 - s_i)``."""
+    shares = logit_shares(prices, a, a0, mu)
+    residual: FloatArray = (prices - c) - mu / (1.0 - shares)
+    return residual
+
+
+def _monopoly_residual(
+    prices: FloatArray, a: FloatArray, a0: float, c: FloatArray, mu: float
+) -> FloatArray:
+    """Residual of the joint-profit markup system.
+
+    ``p_i - c_i - (mu + sum_{j != i} (p_j - c_j) s_j) / (1 - s_i)``.
+    """
+    shares = logit_shares(prices, a, a0, mu)
+    margins = prices - c
+    rivals_term = float(np.dot(margins, shares)) - margins * shares
+    residual: FloatArray = margins - (mu + rivals_term) / (1.0 - shares)
+    return residual
+
+
 def nash_prices(
     a: npt.ArrayLike,
     a0: float,
     c: npt.ArrayLike,
     mu: float,
     *,
-    tol: float = 1e-12,
-    max_iter: int = 10_000,
+    residual_tol: float = _RESIDUAL_TOL,
 ) -> FloatArray:
-    """Solve the one-shot Bertrand-Nash prices ``p^N`` by fixed-point iteration.
-
-    Iterates the markup equation ``p_i = c_i + mu / (1 - s_i(p))`` until the price
-    update is below ``tol``.
+    """Solve the one-shot Bertrand-Nash prices ``p^N``.
 
     Args:
         a: Per-firm quality indices ``a_i``, shape ``(n,)``.
         a0: Outside-good index ``a0``.
         c: Per-firm marginal costs ``c_i``, shape ``(n,)``.
         mu: Horizontal-differentiation index ``mu`` (must be positive).
-        tol: Convergence tolerance on the max absolute price change.
-        max_iter: Maximum number of iterations before giving up.
+        residual_tol: Maximum tolerated markup-equation residual at the solution.
 
     Returns:
         The Nash price vector ``p^N``, shape ``(n,)``.
 
     Raises:
         ValueError: If ``mu <= 0`` or ``a`` and ``c`` have mismatched shapes.
-        ConvergenceError: If the iteration does not converge within ``max_iter``.
+        ConvergenceError: If no valid interior root is found.
     """
     a_arr, c_arr = _validate_market(a, c, mu)
-    prices = c_arr + mu
-    for _ in range(max_iter):
-        shares = logit_shares(prices, a_arr, a0, mu)
-        prices_next = c_arr + mu / (1.0 - shares)
-        if float(np.max(np.abs(prices_next - prices))) < tol:
-            return prices_next
-        prices = prices_next
-    raise ConvergenceError(f"nash_prices did not converge within {max_iter} iterations")
+    guess = c_arr + mu
+    return _solve_markup(_nash_residual, guess, a_arr, a0, c_arr, mu, residual_tol, "nash_prices")
 
 
 def monopoly_prices(
@@ -172,43 +197,62 @@ def monopoly_prices(
     c: npt.ArrayLike,
     mu: float,
     *,
-    tol: float = 1e-12,
-    max_iter: int = 10_000,
+    residual_tol: float = _RESIDUAL_TOL,
 ) -> FloatArray:
-    """Solve the joint-profit (cartel/monopoly) prices ``p^M`` by fixed-point iteration.
+    """Solve the joint-profit (cartel/monopoly) prices ``p^M``.
 
-    A single agent sets all prices to maximise total profit. Iterates the markup
-    system ``p_i = c_i + (mu + sum_{j!=i} (p_j - c_j) s_j) / (1 - s_i)`` until the
-    price update is below ``tol``. The solution satisfies ``p^M > p^N`` elementwise.
+    A single agent sets all prices to maximise total profit. The solution satisfies
+    ``p^M > p^N`` elementwise.
 
     Args:
         a: Per-firm quality indices ``a_i``, shape ``(n,)``.
         a0: Outside-good index ``a0``.
         c: Per-firm marginal costs ``c_i``, shape ``(n,)``.
         mu: Horizontal-differentiation index ``mu`` (must be positive).
-        tol: Convergence tolerance on the max absolute price change.
-        max_iter: Maximum number of iterations before giving up.
+        residual_tol: Maximum tolerated markup-equation residual at the solution.
 
     Returns:
         The monopoly price vector ``p^M``, shape ``(n,)``.
 
     Raises:
         ValueError: If ``mu <= 0`` or ``a`` and ``c`` have mismatched shapes.
-        ConvergenceError: If the iteration does not converge within ``max_iter``.
+        ConvergenceError: If no valid interior root is found.
     """
     a_arr, c_arr = _validate_market(a, c, mu)
-    prices = c_arr + mu
-    for _ in range(max_iter):
-        shares = logit_shares(prices, a_arr, a0, mu)
-        margins = prices - c_arr
-        total_margin_share = float(np.dot(margins, shares))  # sum_j (p_j - c_j) s_j
-        # Per firm: sum over rivals only = total minus own term.
-        rivals_term = total_margin_share - margins * shares
-        prices_next = c_arr + (mu + rivals_term) / (1.0 - shares)
-        if float(np.max(np.abs(prices_next - prices))) < tol:
-            return prices_next
-        prices = prices_next
-    raise ConvergenceError(f"monopoly_prices did not converge within {max_iter} iterations")
+    # Warm-start above marginal cost; monopoly prices sit above the Nash markup.
+    guess = c_arr + 2.0 * mu
+    return _solve_markup(
+        _monopoly_residual, guess, a_arr, a0, c_arr, mu, residual_tol, "monopoly_prices"
+    )
+
+
+def _solve_markup(
+    residual_fn: Callable[[FloatArray, FloatArray, float, FloatArray, float], FloatArray],
+    guess: FloatArray,
+    a: FloatArray,
+    a0: float,
+    c: FloatArray,
+    mu: float,
+    residual_tol: float,
+    label: str,
+) -> FloatArray:
+    """Root-find a markup system with fsolve and validate the solution.
+
+    Raises:
+        ConvergenceError: If the residual exceeds ``residual_tol`` or the implied
+            shares are not strictly interior.
+    """
+    raw = fsolve(residual_fn, guess, args=(a, a0, c, mu), full_output=False)
+    prices: FloatArray = np.asarray(raw, dtype=np.float64)
+    max_residual = float(np.max(np.abs(residual_fn(prices, a, a0, c, mu))))
+    if not np.isfinite(max_residual) or max_residual > residual_tol:
+        raise ConvergenceError(
+            f"{label}: residual {max_residual:.2e} exceeds tolerance {residual_tol:.2e}"
+        )
+    shares = logit_shares(prices, a, a0, mu)
+    if not (bool(np.all(shares > 0.0)) and bool(np.all(shares < 1.0))):
+        raise ConvergenceError(f"{label}: solution has non-interior shares {shares!r}")
+    return prices
 
 
 def _validate_market(

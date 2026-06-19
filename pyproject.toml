@@ -81,9 +81,10 @@ warn_return_any = true
 strict_equality = true
 no_implicit_reexport = true
 
-# Note: scipy ships incomplete type stubs; a `module = ["scipy.*"]` override with
-# `ignore_missing_imports = true` is added in Milestone 2 when bertrand_logit.py
-# first imports it.
+[[tool.mypy.overrides]]
+# scipy ships incomplete type stubs.
+module = ["scipy.*"]
+ignore_missing_imports = true
 
 # ---------------------------------------------------------------------------
 # Pytest

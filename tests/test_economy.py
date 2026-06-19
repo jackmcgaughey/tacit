@@ -100,7 +100,7 @@ def test_nash_satisfies_its_markup_foc():
     p_nash = bl.nash_prices(a, a0, c, mu)
     shares = bl.logit_shares(p_nash, a, a0, mu)
     residual = (p_nash - c) - mu / (1.0 - shares)
-    assert np.allclose(residual, 0.0, atol=1e-9)
+    assert np.allclose(residual, 0.0, atol=1e-6)
 
 
 def test_monopoly_satisfies_its_markup_foc():
@@ -113,7 +113,7 @@ def test_monopoly_satisfies_its_markup_foc():
     margins = p_mono - c
     rivals_term = float(np.dot(margins, shares)) - margins * shares
     residual = margins - (mu + rivals_term) / (1.0 - shares)
-    assert np.allclose(residual, 0.0, atol=1e-9)
+    assert np.allclose(residual, 0.0, atol=1e-6)
 
 
 # --------------------------------------------------------------------------- #
