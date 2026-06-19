@@ -1,0 +1,38 @@
+# Pre-commit hooks for TACIT. Install with `uv run pre-commit install`.
+# Ruff handles lint + format; mypy type-checks the package source.
+minimum_pre_commit_version: "3.8.0"
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        # Preserve Markdown hard line breaks (two trailing spaces), e.g. in CLAUDE.md.
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: mixed-line-ending
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  # mypy runs in the project venv (via uv) rather than a pre-commit-managed
+  # isolated env, so the hook sees the exact same typed third-party dependencies
+  # (typer, pydantic, numpy, scipy, ...) as a local `uv run mypy` and the two can
+  # never drift. Config (strict scope, file set) lives in pyproject.toml.
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy (strict on benchmark/ and harness/)
+        entry: uv run mypy
+        language: system
+        types_or: [python, pyi]
+        pass_filenames: false
+        files: ^src/

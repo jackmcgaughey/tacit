@@ -1,0 +1,94 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tacit"
+version = "0.1.0"
+description = "TACIT — Testing Agent Collusion In heterogeneous Teams: a benchmark for explicit and tacit collusion in LLM agent populations (Phase 1)."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "TACIT" }]
+keywords = ["benchmark", "llm", "agents", "collusion", "game-theory"]
+dependencies = [
+    "numpy>=1.26",
+    "scipy>=1.11",
+    "pydantic>=2.5",
+    "pyyaml>=6.0.1",
+    "jinja2>=3.1",
+    "typer>=0.12",
+]
+
+[project.scripts]
+tacit = "tacit.harness.cli:main"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "pytest>=8.0",
+    "pre-commit>=3.8",
+    "types-PyYAML>=6.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tacit"]
+
+# ---------------------------------------------------------------------------
+# Ruff — lint + format. Docstrings and type hints are required everywhere
+# (CLAUDE.md §1), so the pydocstyle (D) rules are enabled with the Google
+# convention.
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM", "D", "RUF"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+# Tests need not carry module/function docstrings.
+"tests/**" = ["D"]
+
+# ---------------------------------------------------------------------------
+# Mypy — strict on the benchmark/ and harness/ packages (CLAUDE.md §1).
+# A solid baseline is applied to all of src/, then the two strict packages
+# turn on the remaining strict-mode flags via an override.
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.11"
+files = ["src"]
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+disallow_untyped_defs = true
+no_implicit_optional = true
+ignore_missing_imports = false
+
+[[tool.mypy.overrides]]
+# Strict mode for the benchmark definition and the harness engine.
+module = ["tacit.benchmark.*", "tacit.harness.*"]
+disallow_any_generics = true
+disallow_untyped_calls = true
+disallow_incomplete_defs = true
+disallow_untyped_decorators = true
+check_untyped_defs = true
+warn_return_any = true
+strict_equality = true
+no_implicit_reexport = true
+
+# Note: scipy ships incomplete type stubs; a `module = ["scipy.*"]` override with
+# `ignore_missing_imports = true` is added in Milestone 2 when bertrand_logit.py
+# first imports it.
+
+# ---------------------------------------------------------------------------
+# Pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = "-ra -q"
