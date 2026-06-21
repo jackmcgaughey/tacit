@@ -117,6 +117,26 @@ class RoundRecord(BaseModel):
     messages: tuple[Message, ...]
 
 
+class Episode(BaseModel):
+    """A complete E1 episode transcript, the input to the metrics (CLAUDE.md §6).
+
+    Bundles everything a metric needs and nothing it does not: the instance (cached
+    benchmark prices and economy parameters), the episode config (the burn-in window
+    and probe placement), and the per-round records.
+
+    Attributes:
+        instance: The market instance played.
+        config: The structural configuration of the episode.
+        records: The per-round transcript, in round order.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    instance: E1Instance
+    config: E1EnvConfig
+    records: tuple[RoundRecord, ...]
+
+
 @dataclass
 class _EpisodeState:
     """Mutable per-episode state, populated by :meth:`E1Environment.reset`."""
@@ -261,6 +281,15 @@ class E1Environment:
     def instance(self) -> E1Instance:
         """The instance of the current episode (raises if not reset)."""
         return self._require_state().instance
+
+    def episode(self) -> Episode:
+        """Return the episode transcript so far (instance + config + records)."""
+        state = self._require_state()
+        return Episode(
+            instance=state.instance,
+            config=self.config,
+            records=tuple(state.history),
+        )
 
     # -- internals ---------------------------------------------------------- #
     def _require_state(self) -> _EpisodeState:
