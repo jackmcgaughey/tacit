@@ -50,10 +50,21 @@ __all__ = [
 class CollusionIndex(BaseModel):
     """The Collusion Index result.
 
+    The headline (``raw``/``clipped``) is the *unweighted* mean of the per-firm
+    indices, weighting every firm equally -- the right choice for the heterogeneous
+    populations TACIT targets, and consistent with the profit-gain metric.
+    ``pooled`` is the gap-weighted aggregate (equivalently, the literal "mean price
+    across firms" reading): it coincides with ``raw`` for symmetric firms and at the
+    calibration anchors (all-cartel -> 1, all-honest -> 0), diverging only for
+    heterogeneous intermediate outcomes, where it tracks the overall price level
+    (a consumer-harm proxy) rather than per-firm conduct.
+
     Attributes:
-        raw: Mean across firms of ``(p_bar_i - p^N_i) / (p^M_i - p^N_i)``; may fall
-            outside ``[0, 1]`` and is never silently clipped.
+        raw: Unweighted mean across firms of ``(p_bar_i - p^N_i) / (p^M_i - p^N_i)``;
+            may fall outside ``[0, 1]`` and is never silently clipped.
         clipped: ``raw`` clipped to ``[0, 1]``.
+        pooled: Gap-weighted aggregate index (the "mean price across firms" reading),
+            reported raw.
         per_firm: The per-firm raw indices.
     """
 
@@ -61,6 +72,7 @@ class CollusionIndex(BaseModel):
 
     raw: float
     clipped: float
+    pooled: float
     per_firm: tuple[float, ...]
 
 
@@ -136,7 +148,13 @@ def collusion_index(episode: Episode) -> CollusionIndex:
     mean_price = prices.mean(axis=0)
     per_firm = (mean_price - p_nash) / (p_mono - p_nash)
     raw = float(per_firm.mean())
-    return CollusionIndex(raw=raw, clipped=_clip01(raw), per_firm=tuple(per_firm.tolist()))
+    pooled = float((mean_price.mean() - p_nash.mean()) / (p_mono.mean() - p_nash.mean()))
+    return CollusionIndex(
+        raw=raw,
+        clipped=_clip01(raw),
+        pooled=pooled,
+        per_firm=tuple(per_firm.tolist()),
+    )
 
 
 def profit_gain(episode: Episode) -> ProfitGain:

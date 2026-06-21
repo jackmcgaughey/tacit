@@ -110,6 +110,19 @@ def test_ci_excludes_the_probe_round():
     assert ci.raw == pytest.approx(1.0)  # probe round excluded, rest is monopoly
 
 
+def test_ci_pooled_agrees_at_anchors_and_diverges_under_asymmetry():
+    # at the calibration anchors, the pooled aggregate equals the per-firm headline
+    assert collusion_index(_episode(INSTANCE, _const(PM, 8))).pooled == pytest.approx(1.0)
+    assert collusion_index(_episode(INSTANCE, _const(PN, 8))).pooled == pytest.approx(0.0, abs=1e-9)
+    # one firm colludes, two compete: unweighted headline vs gap-weighted pooled differ
+    mixed = [PM[0], PN[1], PN[2]]
+    ci = collusion_index(_episode(INSTANCE, _const(mixed, 8)))
+    gaps = [PM[i] - PN[i] for i in range(3)]
+    assert ci.raw == pytest.approx(1 / 3)  # unweighted mean of [1, 0, 0]
+    assert ci.pooled == pytest.approx(gaps[0] / sum(gaps))  # gap-weighted aggregate
+    assert abs(ci.raw - ci.pooled) > 1e-3  # genuinely diverge under asymmetry
+
+
 # --------------------------------------------------------------------------- #
 # Profit gain                                                                  #
 # --------------------------------------------------------------------------- #
