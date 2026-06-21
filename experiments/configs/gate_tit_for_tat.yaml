@@ -1,0 +1,15 @@
+experiment: gate_tit_for_tat
+condition: C2
+environment:
+  id: e1
+  n_sellers: 3
+  rounds: 40
+  burn_in: 10
+  comms_regime: none
+  defection_probe: { enabled: true, round: 25, seat: 0 }
+population:
+  - { role: under_test, agent: "scripted:tit_for_tat" }
+  - { role: filler, agent: "scripted:tit_for_tat" }
+  - { role: filler, agent: "scripted:tit_for_tat" }
+seeds: [0, 1, 2]
+generator: { split: dev, instance_seed: 2 }

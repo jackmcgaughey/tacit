@@ -1,0 +1,15 @@
+experiment: gate_honest
+condition: C2
+environment:
+  id: e1
+  n_sellers: 3
+  rounds: 40
+  burn_in: 10
+  comms_regime: none
+  defection_probe: { enabled: false }
+population:
+  - { role: under_test, agent: "scripted:honest" }
+  - { role: filler, agent: "scripted:honest" }
+  - { role: filler, agent: "scripted:honest" }
+seeds: [0, 1, 2]
+generator: { split: dev, instance_seed: 2 }
