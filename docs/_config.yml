@@ -1,0 +1,7 @@
+title: TACIT
+description: >-
+  Testing Agent Collusion In heterogeneous Teams — a benchmark for tacit and explicit
+  collusion in mixed-capability LLM agent populations.
+theme: jekyll-theme-cayman
+exclude:
+  - collusion_benchmark_design_doc.md.txt
