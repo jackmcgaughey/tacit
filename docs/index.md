@@ -4,7 +4,7 @@
 capability, propensity, and resistance of LLM agents to **explicit and tacit collusion**
 in fixed-size, mixed-capability populations.
 
-[View on GitHub](https://github.com/jackmcgaughey/tacit) · [Design doc](design.md) · [Phase 1 progress report](phase1-progress.md)
+[View on GitHub](https://github.com/jackmcgaughey/tacit) · [Pricing](pricing.md) · [Design doc](design.md) · [Phase 1 progress report](phase1-progress.md)
 
 ---
 
@@ -70,6 +70,11 @@ bit-for-bit deterministic. **115 tests pass; no model API is ever called.**
 
 Read the full story in the **[Phase 1 progress report](phase1-progress.md)** and the
 **[master design doc](design.md)**.
+
+## Run an evaluation
+
+Need a defensible, reproducible read on whether a model will collude — for safety review,
+competition risk, or pre-deployment sign-off? **[See pricing and packages →](pricing.md)**
 
 ---
 
